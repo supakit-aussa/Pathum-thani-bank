@@ -1,0 +1,170 @@
+// This is your Prisma schema file
+// Prathum-Thani Bank Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountType {
+  SAVINGS
+  FIXED_DEPOSIT
+  ESAVINGS
+}
+
+enum TransactionType {
+  TRANSFER
+  PAYMENT
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CardType {
+  DEBIT
+  CREDIT
+}
+
+enum BillStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  TRANSACTION
+  SECURITY
+  PROMOTION
+  SYSTEM
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String
+  fullName     String
+  phone        String?  @unique
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts      Account[]
+  cards         Card[]
+  billPayments  BillPayment[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Account {
+  id            String      @id @default(cuid())
+  userId        String
+  accountNumber String      @unique
+  accountType   AccountType @default(SAVINGS)
+  balance       Decimal     @default(0) @db.Decimal(15, 2)
+  currency      String      @default("THB")
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outgoingTransactions Transaction[] @relation("FromAccount")
+  incomingTransactions Transaction[] @relation("ToAccount")
+  cards             Card[]
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  fromAccountId String?
+  toAccountId   String?
+  amount        Decimal           @db.Decimal(15, 2)
+  type          TransactionType
+  status        TransactionStatus @default(PENDING)
+  reference     String            @unique @default(cuid())
+  description   String?
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // ACID compliance: fromAccount and toAccount relations ensure referential integrity
+  // Transactions are processed atomically using Prisma transactions ($transaction)
+  fromAccount Account? @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccount   Account? @relation("ToAccount", fields: [toAccountId], references: [id])
+
+  @@map("transactions")
+}
+
+model Card {
+  id         String   @id @default(cuid())
+  userId     String
+  accountId  String
+  cardNumber String   @unique
+  cardType   CardType @default(DEBIT)
+  isLocked   Boolean  @default(false)
+  expiryDate DateTime
+  cvv        String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("cards")
+}
+
+model BillPayment {
+  id            String     @id @default(cuid())
+  userId        String
+  provider      String
+  accountNumber String
+  amount        Decimal    @db.Decimal(15, 2)
+  status        BillStatus @default(PENDING)
+  reference     String     @unique @default(cuid())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bill_payments")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  type      NotificationType @default(SYSTEM)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  currency  String   @unique
+  rate      Decimal  @db.Decimal(15, 6)
+  updatedAt DateTime @updatedAt
+
+  @@map("exchange_rates")
+}
